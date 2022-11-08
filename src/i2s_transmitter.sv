@@ -41,6 +41,10 @@ always_ff @(posedge mclk) begin // the logic here generates the sclk and left ri
         ws <= 1;
         sclk_change <= 0;
         ws_change <= 0;
+
+        tx_data_buffer_l <= 0;
+        tx_data_buffer_r <= 0;
+        sd_tx <= 0;
     end else begin
         if (sclk_cnt < MAIN_TO_SERIAL/2-1) begin  // less than half period of sclk
             sclk_cnt <= sclk_cnt+1;
@@ -51,38 +55,28 @@ always_ff @(posedge mclk) begin // the logic here generates the sclk and left ri
            sclk_change <= 1;
 
 
-           if(sclk == 0) begin //rising edge of clock
+           if(sclk == 1) begin //falling edge of clock
             if (ws_cnt < SERIAL_TO_LEFT_RIGHT/2-1) begin   // less than half period of ws
                     ws_cnt <= ws_cnt+1;
                     ws_change <= 0;
-            end else begin   // half period, edge!
+
+                    if (ws == 1) begin // left channel (this is different from receiving module!)
+                        sd_tx <= tx_data_buffer_l[WIDTH-1];
+                        tx_data_buffer_l <= {tx_data_buffer_l[WIDTH-2:0],1'b0};
+                    end else begin // right channel
+                        sd_tx <= tx_data_buffer_r[WIDTH-1];
+                        tx_data_buffer_r <= {tx_data_buffer_r[WIDTH-2:0],1'b0};
+                    end
+            end else begin   // half period, edge! change channel!
                     ws_cnt <= 0;
                     ws <= !ws;
                     ws_change <= 1;
+
+                    tx_data_buffer_l <= {tx_data_l[WIDTH-2:0],1'b0};  // load new values into channels
+                    tx_data_buffer_r <= {tx_data_r[WIDTH-2:0],1'b0};  // load new values into channels
+                    sd_tx <= (ws == 0) ? tx_data_l[WIDTH-1] : tx_data_r[WIDTH-1];
             end
            end
-        end
-    end
-end
-
-always_ff @(posedge mclk) begin
-    if (rst) begin
-        tx_data_buffer_l <= 0;
-        tx_data_buffer_r <= 0;
-        sd_tx <= 0;
-    end else begin
-        if (ws_change) begin // we changed channel! we must get a new value to stream
-            // we change both for convenience
-            tx_data_buffer_l <= tx_data_l;
-            tx_data_buffer_r <= tx_data_r;
-        end else if (sclk_change && sclk == 0) begin // negedge of sclk
-            if (ws == 1) begin // left channel (this is different from receiving module!)
-                sd_tx <= tx_data_buffer_l[WIDTH-1];
-                tx_data_buffer_l <= {tx_data_buffer_l[WIDTH-2:0],1'b0};
-            end else begin // right channel
-                sd_tx <= tx_data_buffer_r[WIDTH-1];
-                tx_data_buffer_r <= {tx_data_buffer_r[WIDTH-2:0],1'b0};
-            end
         end
     end
 end
