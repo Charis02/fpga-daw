@@ -15,10 +15,10 @@ module i2s_transmitter#(
     input wire mclk, // main clock
     input wire rst, // reset signal
 
-    input logic [WIDTH-1:0] tx_data_l,
-    input logic [WIDTH-1:0] tx_data_r,
+    input wire [WIDTH-1:0] tx_data_l,
+    input wire [WIDTH-1:0] tx_data_r,
 
-    output wire sd_tx, // 1 bit transmitting output
+    output logic sd_tx, // 1 bit transmitting output
 
     output logic sclk,
     output logic ws
