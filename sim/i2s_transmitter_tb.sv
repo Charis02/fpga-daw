@@ -46,10 +46,9 @@ module i2s_transmitter_tb#(parameter WIDTH = 16)();
 
         $display("Test 1: Two 16-bit messages");
 
-        transmit_message = 16'h1111;
         rst=1;
-        tx_data_l = transmit_message;
-        tx_data_r = 0;
+        tx_data_r = 16'h1111;
+        tx_data_l = 16'hffff;
         #20;
         rst = 0;
         #20;
@@ -58,9 +57,9 @@ module i2s_transmitter_tb#(parameter WIDTH = 16)();
             #(24*20);
         end
 
-        transmit_message = 16'hffff;
-        tx_data_r = transmit_message;
-        #20;
+        for(int i = 0;i < 32;i++) begin
+            #(24*20);
+        end
 
         for(int i = 0;i < 32;i++) begin
             #(24*20);
