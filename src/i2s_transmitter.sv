@@ -38,7 +38,7 @@ always_ff @(posedge mclk) begin // the logic here generates the sclk and left ri
         sclk_cnt <= 0;
         ws_cnt <= 0;
         sclk <= 0;
-        ws <= 0;
+        ws <= 1;
         sclk_change <= 0;
         ws_change <= 0;
     end else begin
