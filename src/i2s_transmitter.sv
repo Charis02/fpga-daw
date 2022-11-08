@@ -4,7 +4,7 @@
 // I2S Transmitter, utilizing CS5344
 // Timing diagram: https://statics.cirrus.com/pubs/proDatasheet/CS5343-44_F5.pdf
 
-module i2s_receiver#(
+module i2s_transmitter#(
     parameter WIDTH = 16,
     parameter MAIN_TO_SERIAL = 24, // period of serial clock measuring with main clock rising edges
     parameter MAIN_TO_LEFT_RIGHT = 1536, // period of ws clock measuring with main clock rising edges
