@@ -38,47 +38,45 @@ module i2s_receiver_tb#(parameter WIDTH = 16)();
         $display("Starting Simulation.");
         mclk = 0;
         rst = 0;
-        #20;
-        rst=1;
-        #20;
-        rst=0;
-        #20;
+        sd_rx = 0;
+
+        #(4*20);
 
         // Test  1
 
         $display("Test 1: Two 16-bit messages");
 
-        receive_message = 16'h1111;
-
-        for(int i = WIDTH-1;i >= 0;i--) begin
-            sd_rx = receive_message[i];
-
-            #(24*20);
-        end
-
-        for(int i = WIDTH;i < 32;i++) begin
-            sd_rx = 0;
-
-            #(24*20);
-        end
 
         receive_message = 16'hffff;
 
         for(int i = WIDTH-1;i >= 0;i--) begin
             sd_rx = receive_message[i];
 
-            #(24*20);
+            #(8*20);
         end
 
-        for(int i = WIDTH;i < 64;i++) begin
+        for(int i = WIDTH;i < 32;i++) begin
             sd_rx = 0;
 
-            #(24*20);
+            #(8*20);
+        end
+        receive_message = 16'h8111;
+
+        for(int i = WIDTH-1;i >= 0;i--) begin
+            sd_rx = receive_message[i];
+
+            #(8*20);
         end
 
-        #(24*20);
-        #(24*20);
-        #(24*20);
+        for(int i = WIDTH;i < 32;i++) begin
+            sd_rx = 0;
+
+            #(8*20);
+        end
+
+        #(8*20);
+        #(8*20);
+        #(8*20);
 
         $finish;
     end
