@@ -6,10 +6,9 @@
 
 module i2s_transmitter#(
     parameter WIDTH = 16,
-    parameter MAIN_TO_SERIAL = 24, // period of serial clock measuring with main clock rising edges
-    parameter MAIN_TO_LEFT_RIGHT = 1536, // period of ws clock measuring with main clock rising edges
-    parameter SERIAL_TO_LEFT_RIGHT = 64, // period of ws clock measuring with serial clock rising edges
-    parameter SAMPLING_RATE = 44100 // this probably does not matter  
+    parameter MAIN_TO_SERIAL = 8, // period of serial clock measuring with main clock rising edges
+    parameter MAIN_TO_LEFT_RIGHT = 256, // period of ws clock measuring with main clock rising edges
+    parameter SERIAL_TO_LEFT_RIGHT = 64 // period of ws clock measuring with serial clock rising edges
 )
 (
     input wire mclk, // main clock
@@ -24,62 +23,62 @@ module i2s_transmitter#(
     output logic ws
 );
 
-logic [$clog2(MAIN_TO_SERIAL):0] sclk_cnt;
-logic [$clog2(SERIAL_TO_LEFT_RIGHT):0] ws_cnt;
+    logic [$clog2(MAIN_TO_SERIAL):0] sclk_cnt;
+    logic [$clog2(SERIAL_TO_LEFT_RIGHT):0] ws_cnt;
 
-logic [WIDTH-1:0] tx_data_buffer_l;
-logic [WIDTH-1:0] tx_data_buffer_r;
+    logic [WIDTH-1:0] tx_data_buffer_l;
+    logic [WIDTH-1:0] tx_data_buffer_r;
 
-logic sclk_change;
-logic ws_change;
+    logic sclk_change;
+    logic ws_change;
 
-always_ff @(posedge mclk) begin // the logic here generates the sclk and left right clock (ws)
-    if (rst) begin  // reset stuff
-        sclk_cnt <= 0;
-        ws_cnt <= 0;
-        sclk <= 0;
-        ws <= 1;
-        sclk_change <= 0;
-        ws_change <= 0;
-
-        tx_data_buffer_l <= 0;
-        tx_data_buffer_r <= 0;
-        sd_tx <= 0;
-    end else begin
-        if (sclk_cnt < MAIN_TO_SERIAL/2-1) begin  // less than half period of sclk
-            sclk_cnt <= sclk_cnt+1;
+    always_ff @(posedge mclk) begin // the logic here generates the sclk and left right clock (ws)
+        if (rst) begin  // reset stuff
+            sclk_cnt <= 0;
+            ws_cnt <= 0;
+            sclk <= 0;
+            ws <= 1;
             sclk_change <= 0;
-        end else begin  // half period, edge!
-           sclk_cnt <= 0;
-           sclk <= !sclk;
-           sclk_change <= 1;
+            ws_change <= 0;
+
+            tx_data_buffer_l <= 0;
+            tx_data_buffer_r <= 0;
+            sd_tx <= 0;
+        end else begin
+            if (sclk_cnt < MAIN_TO_SERIAL/2-1) begin  // less than half period of sclk
+                sclk_cnt <= sclk_cnt+1;
+                sclk_change <= 0;
+            end else begin  // half period, edge!
+            sclk_cnt <= 0;
+            sclk <= !sclk;
+            sclk_change <= 1;
 
 
-           if(sclk == 1) begin //falling edge of clock
-            if (ws_cnt < SERIAL_TO_LEFT_RIGHT/2-1) begin   // less than half period of ws
-                    ws_cnt <= ws_cnt+1;
-                    ws_change <= 0;
+            if(sclk == 1) begin //falling edge of clock
+                if (ws_cnt < SERIAL_TO_LEFT_RIGHT/2-1) begin   // less than half period of ws
+                        ws_cnt <= ws_cnt+1;
+                        ws_change <= 0;
 
-                    if (ws == 1) begin // left channel (this is different from receiving module!)
-                        sd_tx <= tx_data_buffer_l[WIDTH-1];
-                        tx_data_buffer_l <= {tx_data_buffer_l[WIDTH-2:0],1'b0};
-                    end else begin // right channel
-                        sd_tx <= tx_data_buffer_r[WIDTH-1];
-                        tx_data_buffer_r <= {tx_data_buffer_r[WIDTH-2:0],1'b0};
-                    end
-            end else begin   // half period, edge! change channel!
-                    ws_cnt <= 0;
-                    ws <= !ws;
-                    ws_change <= 1;
+                        if (ws == 1) begin // left channel (this is different from receiving module!)
+                            sd_tx <= tx_data_buffer_l[WIDTH-1];
+                            tx_data_buffer_l <= {tx_data_buffer_l[WIDTH-2:0],1'b0};
+                        end else begin // right channel
+                            sd_tx <= tx_data_buffer_r[WIDTH-1];
+                            tx_data_buffer_r <= {tx_data_buffer_r[WIDTH-2:0],1'b0};
+                        end
+                end else begin   // half period, edge! change channel!
+                        ws_cnt <= 0;
+                        ws <= !ws;
+                        ws_change <= 1;
 
-                    tx_data_buffer_l <= {tx_data_l[WIDTH-2:0],1'b0};  // load new values into channels
-                    tx_data_buffer_r <= {tx_data_r[WIDTH-2:0],1'b0};  // load new values into channels
-                    sd_tx <= (ws == 0) ? tx_data_l[WIDTH-1] : tx_data_r[WIDTH-1];
+                        tx_data_buffer_l <= {tx_data_l[WIDTH-2:0],1'b0};  // load new values into channels
+                        tx_data_buffer_r <= {tx_data_r[WIDTH-2:0],1'b0};  // load new values into channels
+                        sd_tx <= (ws == 0) ? tx_data_l[WIDTH-1] : tx_data_r[WIDTH-1];
+                end
             end
-           end
+            end
         end
     end
-end
 
 endmodule
 
