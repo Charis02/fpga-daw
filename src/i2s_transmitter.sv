@@ -23,63 +23,71 @@ module i2s_transmitter#(
     output logic ws
 );
 
-    logic [$clog2(MAIN_TO_SERIAL):0] sclk_cnt;
-    logic [$clog2(SERIAL_TO_LEFT_RIGHT):0] ws_cnt;
+    logic [$clog2(MAIN_TO_SERIAL):0] sclk_cnt;  // used to count serial clock intervals
+    logic [$clog2(SERIAL_TO_LEFT_RIGHT):0] ws_cnt; // used to count ws clock intervals
+    initial sclk_cnt = 0;
+    initial ws_cnt = 0;
+    initial sclk = 0;
+    initial ws = 0;
 
-    logic [WIDTH-1:0] tx_data_buffer_l;
-    logic [WIDTH-1:0] tx_data_buffer_r;
+    logic [WIDTH-1:0] tx_data_buffer_l; // temporarily store input (left channel)
+    logic [WIDTH-1:0] tx_data_buffer_r; // temporarily store input (right channel)
+    initial tx_data_buffer_l = 0;
+    initial tx_data_buffer_r = 0;
 
-    logic sclk_change;
-    logic ws_change;
-
-    always_ff @(posedge mclk) begin // the logic here generates the sclk and left right clock (ws)
-        if (rst) begin  // reset stuff
-            sclk_cnt <= 0;
-            ws_cnt <= 0;
+    // serial clock generation:
+    // Every MAIN_TO_SERIAL/2 rising edges of main clock, flip serial clock
+    always_ff @(posedge mclk) begin
+        if (rst) begin // reset stuff
             sclk <= 0;
-            ws <= 1;
-            sclk_change <= 0;
-            ws_change <= 0;
-
-            tx_data_buffer_l <= 0;
-            tx_data_buffer_r <= 0;
-            sd_tx <= 0;
-        end else begin
-            if (sclk_cnt < MAIN_TO_SERIAL/2-1) begin  // less than half period of sclk
-                sclk_cnt <= sclk_cnt+1;
-                sclk_change <= 0;
-            end else begin  // half period, edge!
             sclk_cnt <= 0;
-            sclk <= !sclk;
-            sclk_change <= 1;
-
-
-            if(sclk == 1) begin //falling edge of clock
-                if (ws_cnt < SERIAL_TO_LEFT_RIGHT/2-1) begin   // less than half period of ws
-                        ws_cnt <= ws_cnt+1;
-                        ws_change <= 0;
-
-                        if (ws == 1) begin // left channel (this is different from receiving module!)
-                            sd_tx <= tx_data_buffer_l[WIDTH-1];
-                            tx_data_buffer_l <= {tx_data_buffer_l[WIDTH-2:0],1'b0};
-                        end else begin // right channel
-                            sd_tx <= tx_data_buffer_r[WIDTH-1];
-                            tx_data_buffer_r <= {tx_data_buffer_r[WIDTH-2:0],1'b0};
-                        end
-                end else begin   // half period, edge! change channel!
-                        ws_cnt <= 0;
-                        ws <= !ws;
-                        ws_change <= 1;
-
-                        tx_data_buffer_l <= {tx_data_l[WIDTH-2:0],1'b0};  // load new values into channels
-                        tx_data_buffer_r <= {tx_data_r[WIDTH-2:0],1'b0};  // load new values into channels
-                        sd_tx <= (ws == 0) ? tx_data_l[WIDTH-1] : tx_data_r[WIDTH-1];
-                end
-            end
+        end else begin
+            if (sclk_cnt == MAIN_TO_SERIAL/2-1) begin // it's time to flip sclk
+                sclk <= !sclk;
+                sclk_cnt <= 0;  // reset counter
+            end else begin  // don't flip sclk yet.. just increase the counter
+                sclk_cnt <= sclk_cnt+1;
             end
         end
     end
 
+    // word select clock generation
+    // Every SERIAL_TO_LEFT_RIGHT/2 rising edges of serial clock, flip word select clock
+    // In here we also keep track of our input
+    always_ff @(posedge mclk) begin
+        if (rst) begin
+            ws <= 0;
+            ws_cnt <= 0;
+            tx_data_buffer_r = 0;
+            tx_data_buffer_l = 0;
+        end else begin
+            if (sclk_cnt == 0) begin    // in the previous cycle we flipped the sclk, so there was an edge
+            // the above could also be == MAIN_TO_SERIAL/2-1 but it is not necessary (probably) (i hope)
+                if (sclk == 1) begin // posedge of sclk -> increase lr clock counter
+                    if (ws_cnt == SERIAL_TO_LEFT_RIGHT/2-1) begin // it's time to flip left right clock
+                        ws <= !ws;
+                        ws_cnt <= 0;    // reset counter
+
+                        // we flipped the word select, so we have received a new input and we have to output it
+                        tx_data_buffer_l <= tx_data_l;  // output left channel
+                        tx_data_buffer_r <= tx_data_r;  // output right channel
+                    end else begin  // don't flip lrclk yet.. just increase the counter
+                        ws_cnt <= ws_cnt+1;
+                    end
+                end else begin // negedge of serial clock -> read data
+                    if (ws_cnt <= WIDTH) begin // only read as many data as we can fit, the other is garbage
+                        if (ws == 1) begin // right channel
+                            sd_tx <= tx_data_buffer_r[WIDTH-1];
+                            tx_data_buffer_r <= {tx_data_buffer_r[WIDTH-2:0],1'b0};
+                        end else begin // left channel
+                            sd_tx <= tx_data_buffer_l[WIDTH-1];
+                            tx_data_buffer_l <= {tx_data_buffer_l[WIDTH-2:0],1'b0};
+                        end
+                    end
+                end
+            end
+        end
+    end
 endmodule
 
 `default_nettype wire
