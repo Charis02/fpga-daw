@@ -1,7 +1,10 @@
 `default_nettype none
 `timescale 1ns / 1ps
 
-module top_level(
+module top_level#(
+    parameter WORD_WIDTH = 8
+)
+(
     input wire clk, //clock @ 100 MHz
     input wire btnc, //btnc (used for reset)
 
@@ -35,10 +38,12 @@ module top_level(
     assign i2s_mclk[0] = clk_22;    // main clock for i2s transmit
     assign i2s_mclk[1] = clk_22;    // main clock for i2s receive
 
-    logic [7:0] i2s_data_l; // data received which will also be passed to the transmitter (left channel)
-    logic [7:0] i2s_data_r; // data received which will also be passed to the transmitter (right channel)
+    logic [WORD_WIDTH-1:0] i2s_data_l; // data received which will also be passed to the transmitter (left channel)
+    logic [WORD_WIDTH-1:0] i2s_data_r; // data received which will also be passed to the transmitter (right channel)
 
-    i2s_receiver receiver(
+    i2s_receiver#(
+        .WIDTH(WORD_WIDTH)
+    ) receiver(
         .mclk(i2s_mclk[1]),
         .rst(sys_rst),
         .sd_rx(i2s_sdin),
@@ -49,30 +54,37 @@ module top_level(
     );
 
     logic [7:0] i2s_data_l_transmit;
-    logic [7:0] dummy;
+    
+    logic [WORD_WIDTH-1:0] i2s_data_l_transmit_final = (sw[15]) ? i2s_data_l_transmit : 0;
 
-    i2s_transmitter transmitter(
+    i2s_transmitter#(
+        .WIDTH(WORD_WIDTH)
+    ) transmitter(
         .mclk(i2s_mclk[0]),
         .rst(sys_rst),
-        .tx_data_l(i2s_data_l_transmit), // these contain whatever was received 
+        .tx_data_l(i2s_data_l_transmit_final), // these contain whatever was received 
         .tx_data_r(i2s_data_r), // these contain whatever was received 
         .sd_tx(i2s_sdout),
         .sclk(i2s_sclk[0]),
         .ws(i2s_lrclk[0])
     );
 
-    logic [3:0] sd_dat;
-    assign sd_dat[0] = sd_dat_in[0];
-    assign sd_dat_out[2:0] = sd_dat[3:1];
-
-    recorder record(
+    track_store_load#(
+        .WORD_WIDTH(WORD_WIDTH)
+    ) store_load(
         .clk(clk_100),
         .rst(sys_rst),
-        .record_req(sw[0]),
-        .play_req(sw[15]),
-        .byte_in(i2s_data_l),
-        .byte_out(i2s_data_l_transmit),
-        .sd_dat(sd_dat),
+        .store_req(sw[0]),
+        .load_req(sw[15]),
+        
+        .din(i2s_data_l),
+        .wr(~i2s_lrclk[1]),
+
+        .dout(i2s_data_l_transmit),
+        .rd(i2s_lrclk[0]),
+
+        .sd_dat_in(sd_dat_in),
+        .sd_dat_out(sd_dat_out),
         .sd_reset(sd_reset),
         .sd_sck(sd_sck),
         .sd_cmd(sd_cmd)
