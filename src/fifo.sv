@@ -14,10 +14,10 @@ module fifo#
     output logic [WIDTH-1:0] dout,  // exactly 2 cycles after asserting rd, we get a valid value here
 
     input wire wr,
-    input logic [WIDTH-1:0] din
+    input wire [WIDTH-1:0] din
 );
-    logic [clogb2(DEPTH-1)-1:0] read_pointer;
-    logic [clogb2(DEPTH-1)-1:0] write_pointer;
+    logic [$clog2(DEPTH-1)-1:0] read_pointer;
+    logic [$clog2(DEPTH-1)-1:0] write_pointer;
     initial read_pointer = 0;
     initial write_pointer = 0;
 
