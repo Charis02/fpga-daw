@@ -19,8 +19,9 @@ module top_level#(
     output logic sd_reset, 
     output logic sd_sck, 
     output logic sd_cmd,
+    input wire sd_cd,
 
-    input wire [15:0] sw
+    input wire [15:0] sw,
 );
     logic sys_rst = btnc;
 
@@ -53,7 +54,7 @@ module top_level#(
         .ws(i2s_lrclk[1])
     );
 
-    logic [7:0] i2s_data_l_transmit;
+    logic [WORD_WIDTH-1:0] i2s_data_l_transmit;
     
     logic [WORD_WIDTH-1:0] i2s_data_l_transmit_final = (sw[15]) ? i2s_data_l_transmit : 0;
 
@@ -62,7 +63,7 @@ module top_level#(
     ) transmitter(
         .mclk(i2s_mclk[0]),
         .rst(sys_rst),
-        .tx_data_l(i2s_data_l_transmit_final), // these contain whatever was received 
+        .tx_data_l((sw[1]) ? i2s_data_l : i2s_data_l_transmit_final), // these contain whatever was received 
         .tx_data_r(i2s_data_r), // these contain whatever was received 
         .sd_tx(i2s_sdout),
         .sclk(i2s_sclk[0]),
