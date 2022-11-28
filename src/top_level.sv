@@ -2,7 +2,7 @@
 `timescale 1ns / 1ps
 
 module top_level#(
-    parameter WORD_WIDTH = 8
+    parameter WORD_WIDTH = 24
 )
 (
     input wire clk, //clock @ 100 MHz
