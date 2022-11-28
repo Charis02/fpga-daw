@@ -153,7 +153,7 @@ module track_store_load#
                 read_next_fifo_store <= 1;
             end else begin
                 fifo_store_index <= fifo_store_index + 8;
-                fifo_store_word <= {8'b0,fifo_store_word};
+                fifo_store_word <= {8'b0,fifo_store_word[WORD_WIDTH-1:8]};
             end
         end else if (store_to_sd) begin // there are 512 bytes in the fifo waiting to be stored
             if (sd_ready) begin
