@@ -24,9 +24,6 @@ module fifo#
     logic rd_prev;
     logic wr_prev;
 
-    logic rd_posedge = rd&~rd_prev;
-    logic wr_posedge = wr&~wr_prev;
-
     xilinx_true_dual_port_read_first_1_clock_ram #(
         .RAM_WIDTH(WIDTH),                       // Specify RAM data width
         .RAM_DEPTH(DEPTH)                     // Specify RAM depth (number of entries)
@@ -38,7 +35,7 @@ module fifo#
         .ena(1'b1),    // Always on (?)
         .rsta(rst), // reset with system
         .dina(din), 
-        .wea(wr_posedge),  // Port A write enable
+        .wea((wr == 1 && wr_prev == 0) ? 1 : 0),  // Port A write enable
 
         .addrb(read_pointer), // use port B for reads
         .enb(1'b1), // always on (?)
@@ -52,13 +49,13 @@ module fifo#
             read_pointer <= 0;
             write_pointer <= 0;
         end else begin
-            if (rd_posedge) begin
+            if (rd == 1 && rd_prev == 0) begin
                 if (read_pointer + 1 < DEPTH)
                     read_pointer <= read_pointer + 1;
                 else 
                     read_pointer <= 0;
             end
-            if (wr_posedge) begin
+            if (wr == 1 && wr_prev == 0) begin
                 if (write_pointer + 1 < DEPTH)
                     write_pointer <= write_pointer + 1;
                 else
