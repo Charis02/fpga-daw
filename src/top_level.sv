@@ -21,7 +21,7 @@ module top_level#(
     output logic sd_cmd,
     input wire sd_cd,
 
-    input wire [15:0] sw,
+    input wire [15:0] sw
 );
     logic sys_rst = btnc;
 
