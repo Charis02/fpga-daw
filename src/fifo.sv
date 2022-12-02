@@ -11,13 +11,13 @@ module fifo#
     input wire rst,
     
     input wire rd,  // assert when you need a new value
-    output logic [WIDTH-1:0] dout,  // on the next clk posedge, we have a valid new value here
+    output logic [WIDTH-1:0] dout,  // 2 clk cycles later, we have a valid new value here
 
     input wire wr,  // assert to write a new value
     input wire [WIDTH-1:0] din
 );
-    logic [$clog2(DEPTH-1)-1:0] read_pointer;
-    logic [$clog2(DEPTH-1)-1:0] write_pointer;
+    logic [$clog2(DEPTH)-1:0] read_pointer;
+    logic [$clog2(DEPTH)-1:0] write_pointer;
     initial read_pointer = 0;
     initial write_pointer = 0;
 
@@ -35,7 +35,7 @@ module fifo#
         .ena(1'b1),    // Always on (?)
         .rsta(rst), // reset with system
         .dina(din), 
-        .wea(wr),  // Port A write enable
+        .wea((wr == 1 && wr_prev == 0) ? 1 : 0),  // Port A write enable
 
         .addrb(read_pointer), // use port B for reads
         .enb(1'b1), // always on (?)
