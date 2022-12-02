@@ -2,7 +2,7 @@
 `timescale 1ns / 1ps
 
 module top_level#(
-    parameter WORD_WIDTH = 24
+    parameter WORD_WIDTH = 8
 )
 (
     input wire clk, //clock @ 100 MHz
@@ -21,7 +21,9 @@ module top_level#(
     output logic sd_cmd,
     input wire sd_cd,
 
-    input wire [15:0] sw
+    input wire [15:0] sw,
+
+    output logic [15:0] led
 );
     logic sys_rst = btnc;
 
@@ -90,6 +92,13 @@ module top_level#(
         .sd_sck(sd_sck),
         .sd_cmd(sd_cmd)
     );
+
+    always_ff @(posedge clk_100) begin
+        if (sys_rst) begin
+            led <= 0;
+        end else begin
+        end
+    end
 
 endmodule
 
