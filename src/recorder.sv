@@ -173,7 +173,7 @@ module track_store_load#
             end
         end
 
-        if (wr == 1 && wr_prev == 0 && store_byte_cnt == 512-WORD_WIDTH/8) begin  // time to store stuff from fifo to sd
+        if (storing && wr == 1 && wr_prev == 0 && store_byte_cnt == 512-WORD_WIDTH/8) begin  // time to store stuff from fifo to sd
             store_to_sd <= 1;
         end else if (store_to_sd && sd_ready) begin // the request is accepted from sd card, reset flag
             store_to_sd <= 0;
@@ -185,19 +185,14 @@ module track_store_load#
     // ------------------------- (LOAD) SD - FIFO - OUTPUT PIPELINE SECTION--------------------------------
 
     logic [8:0] load_byte_cnt;
-    initial load_byte_cnt = 0;
-    logic write_next_fifo_load; // requests to load from sd to fifo new 512 byte sequence
+    logic [3:0] write_next_fifo_load; // requests to load from sd to fifo new 512 byte sequence
 
-   // logic [$clog2(WORD_WIDTH)-1:0] fifo_load_index;
-
-    logic [10:0] cnt_byte_available_posedge;
+    logic [8:0] cnt_byte_available_posedge;
     logic rd_prev;
-
-    logic [WORD_WIDTH-1:0] current_word;
 
     fifo#(
         .WIDTH(WORD_WIDTH),
-        .DEPTH(2048)
+        .DEPTH(4096)
     )
     fifo_load( // fifo that holds what we just loaded from sd
         .clk(clk),
@@ -206,22 +201,31 @@ module track_store_load#
         .rd((load_req == 1 && rd == 1 && rd_prev == 0) ? 1 : 0),
         .dout(dout),
 
-        .wr((sd_rd == 1 && byte_available == 0 && byte_available_prev == 1) ? 1 : 0),  // write on negative edge of byte available to ensure current_word is updated
-        .din(current_word)
+        .wr((sd_rd == 1 && byte_available == 1 && byte_available_prev == 0) ? 1 : 0),  // write on negative edge of byte available to ensure current_word is updated
+        .din(sd_dout)
     );
+
+    // i need to check:
+    // cnt_byte_available_posedge
+    // read_pointer
+    // write_pointer
+    
 
     always_ff @(posedge clk) begin  // sd card -> fifo load
         if (rst) begin
+            cnt_byte_available_posedge <= 0;
             sd_rd <= 0;
+            write_next_fifo_load <= 3;
         end else if (sd_rd == 1 && byte_available == 1 && byte_available_prev == 0) begin // byte available posedge
-            cnt_byte_available_posedge <= cnt_byte_available_posedge + 1;
-            
             if (cnt_byte_available_posedge == 511) begin
+                cnt_byte_available_posedge <= 0;
                 sd_rd <= 0;
+            end else begin
+                cnt_byte_available_posedge <= cnt_byte_available_posedge + 1;
             end
                 
-            current_word <= sd_dout;
-                
+//            current_word <= sd_dout;
+//                
 //                if (WORD_WIDTH == 8) begin
 //                    current_word <= sd_dout;
 //                end else begin
@@ -233,7 +237,7 @@ module track_store_load#
 //                end else begin
 //                    fifo_load_index <= fifo_load_index + 8;
 //                end
-        end else if (load_req && write_next_fifo_load) begin
+        end else if (load_req == 1 && write_next_fifo_load > 0) begin
             if (sd_ready) begin
                 sd_rd <= 1;
                 cnt_byte_available_posedge <= 0;
@@ -242,15 +246,15 @@ module track_store_load#
 
         if (!load_req) begin
             sd_addr_load <= 0;
-            write_next_fifo_load <= 1;
+            write_next_fifo_load <= 3;
         end else if (sd_rd == 1 && byte_available == 1 && byte_available_prev == 0 && cnt_byte_available_posedge == 511) begin
             sd_addr_load <= sd_addr_load+512;
         end
         
-        if (load_req == 1 && rd == 1 && rd_prev == 0 && load_byte_cnt == 512-WORD_WIDTH/8) begin
-            write_next_fifo_load <= 1;
-        end else if(load_req == 1 && write_next_fifo_load == 1 && sd_ready == 1) begin
-            write_next_fifo_load <= 0;
+        if (load_req == 1 && rd == 1 && rd_prev == 0 && load_byte_cnt == 511) begin
+            write_next_fifo_load <= write_next_fifo_load + 1;
+        end else if(load_req == 1 && write_next_fifo_load > 0 && sd_ready == 1) begin
+            write_next_fifo_load <= write_next_fifo_load - 1;
         end
 
         byte_available_prev <= byte_available; // to calculate posedge
@@ -261,7 +265,7 @@ module track_store_load#
         if (rst) begin
             load_byte_cnt <= 0;
         end else if (rd == 1 && rd_prev == 0  && load_req == 1) begin // new word request
-            load_byte_cnt <= load_byte_cnt + WORD_WIDTH/8;  // add how many bytes we retrieved from fifo
+            load_byte_cnt <= load_byte_cnt + 1;  // add how many bytes we retrieved from fifo
         end
         rd_prev <= rd;
     end
