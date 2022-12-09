@@ -12,6 +12,8 @@ module track_store_load#
     input wire store_req,   // asserted when we are also going to assert rd
     input wire load_req,    // asserted when we are going to also assert wr
 
+    input wire [31:0] initial_addr,
+
     input wire [WORD_WIDTH-1:0] din,
     input wire wr,    // asserted when we have a new value on din
 
@@ -137,7 +139,7 @@ module track_store_load#
         end
 
         if (!store_req) begin
-            sd_addr_store <= 0;
+            sd_addr_store <= initial_addr;
         end else if (sd_wr && ready_for_next_byte == 1 && ready_for_next_byte_prev == 0 && cnt_ready_for_next_byte_posedge == 511) begin
             sd_addr_store <= sd_addr_store + 512;
         end
@@ -245,7 +247,7 @@ module track_store_load#
         end
 
         if (!load_req) begin
-            sd_addr_load <= 0;
+            sd_addr_load <= initial_addr;
             write_next_fifo_load <= 3;
         end else if (sd_rd == 1 && byte_available == 1 && byte_available_prev == 0 && cnt_byte_available_posedge == 511) begin
             sd_addr_load <= sd_addr_load+512;
