@@ -5,7 +5,7 @@
 // Timing diagram: https://statics.cirrus.com/pubs/proDatasheet/CS5343-44_F5.pdf
 
 module i2s_transmitter#(
-    parameter WIDTH = 16,
+    parameter WIDTH = 8,
     parameter MAIN_TO_SERIAL = 8, // period of serial clock measuring with main clock rising edges
     parameter MAIN_TO_LEFT_RIGHT = 256, // period of ws clock measuring with main clock rising edges
     parameter SERIAL_TO_LEFT_RIGHT = 64 // period of ws clock measuring with serial clock rising edges
@@ -69,8 +69,12 @@ module i2s_transmitter#(
                         ws_cnt <= 0;    // reset counter
 
                         // we flipped the word select, so we have received a new input and we have to output it
-                        tx_data_buffer_l <= tx_data_l;  // output left channel
-                        tx_data_buffer_r <= tx_data_r;  // output right channel
+                        
+                        if (ws == 1) begin
+                            tx_data_buffer_l <= tx_data_l;  // output left channel
+                        end else begin
+                            tx_data_buffer_r <= tx_data_r;  // output right channel
+                        end
                     end else begin  // don't flip lrclk yet.. just increase the counter
                         ws_cnt <= ws_cnt+1;
                     end
