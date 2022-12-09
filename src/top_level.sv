@@ -62,8 +62,7 @@ module top_level#(
         .mclk(i2s_mclk[0]),
         .rst(sys_rst),
         .tx_data_l((sw[1]) ? i2s_data_l : i2s_data_transmit), // these contain whatever was received 
-      //  .tx_data_r((sw[1]) ? i2s_data_l : i2s_data_transmit), // these contain whatever was received 
-        .tx_data_r(i2s_data_r), // these contain whatever was received 
+        .tx_data_r((sw[1]) ? i2s_data_r : i2s_data_transmit), // these contain whatever was received
         .sd_tx(i2s_sdout),
         .sclk(i2s_sclk[0]),
         .ws(i2s_lrclk[0])
@@ -81,6 +80,8 @@ module top_level#(
         .rst(sys_rst),
         .store_req(sw[0]),
         .load_req(sw[15]),
+
+        .initial_addr(sw[14:10]<<25),
         
         .din(store_load_din),
         .wr(store_load_wr),
@@ -95,20 +96,17 @@ module top_level#(
         .sd_cmd(sd_cmd)
     );
     
-    
-//    ila_0 my_ila(
-//        .clk(clk_100),
-//        .probe0(store_load_rd),
-//        .probe1(i2s_lrclk[1]),
-//        .probe2(clock_cross_bram_100_to_22_out),
-//        .probe3(clock_cross_bram_22_to_100_out)
-//    );
-    
     logic [15:0] clock_cross_bram_100_to_22_out;
     logic [15:0] clock_cross_bram_22_to_100_out;
-    logic [7:0] i2s_new_data;
     logic i2s_lrclk_prev;
     logic i2s_clock_change;
+    logic [7:0] i2s_data_to_store;
+
+    always_ff @(posedge clk_22) begin
+        i2s_lrclk_prev <= i2s_lrclk[1];
+        i2s_clock_change <= (i2s_lrclk[1] != i2s_lrclk_prev) ? 1 : 0;
+        i2s_data_to_store <= (i2s_lrclk[1] == 1) ? i2s_data_l : i2s_data_r;
+    end
 
     blk_mem_gen_0 
     clock_cross_bram_22_to_100
@@ -116,7 +114,7 @@ module top_level#(
         .clka(clk_22),        // Clock in
         .addra(0),  // use port A for writes
         .ena(1'b1),    // Always on (?)
-        .dina({0,i2s_lrclk[1],i2s_data_l}),
+        .dina({0,i2s_clock_change,i2s_data_to_store}),
         .wea(1'b1),
 
         .clkb(clk_100), // clock out
