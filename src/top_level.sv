@@ -2,7 +2,8 @@
 `timescale 1ns / 1ps
 
 module top_level#(
-    parameter WORD_WIDTH = 8
+    parameter WORD_WIDTH = 8,
+    parameter CHANNELS = 8
 )
 (
     input wire clk, //clock @ 100 MHz
@@ -71,7 +72,9 @@ module top_level#(
     logic [WORD_WIDTH-1:0] store_load_din;
     logic store_load_wr;
     logic [WORD_WIDTH-1:0] store_load_dout;
+    logic [$clog2(CHANNELS)-1:0][WORD_WIDTH-1:0] store_load_mdout;
     logic store_load_rd;
+    logic store_load_mrd;
 
     track_store_load#(
         .WORD_WIDTH(WORD_WIDTH)
@@ -80,6 +83,7 @@ module top_level#(
         .rst(sys_rst),
         .store_req(sw[0]),
         .load_req(sw[15]),
+        .mix_req(sw[1]),
 
         .initial_addr(sw[14:10]<<25),
         
@@ -88,6 +92,9 @@ module top_level#(
 
         .dout(store_load_dout),
         .rd(store_load_rd),
+
+        .mdout(store_load_mdout),
+        .mrd(store_load_mrd),
 
         .sd_dat_in(sd_dat_in),
         .sd_dat_out(sd_dat_out),
@@ -141,6 +148,7 @@ module top_level#(
     assign store_load_din = clock_cross_bram_22_to_100_out[7:0];
     assign store_load_wr = clock_cross_bram_22_to_100_out[8];
     assign store_load_rd = clock_cross_bram_22_to_100_out[8];
+    assign store_load_mrd = clock_cross_bram_22_to_100_out[8];
     assign i2s_data_transmit = clock_cross_bram_100_to_22_out[7:0];
 
 endmodule

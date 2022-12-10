@@ -3,7 +3,8 @@
 
 module track_store_load#
 (
-    parameter WORD_WIDTH = 16
+    parameter WORD_WIDTH = 16,
+    parameter CHANNELS = 8,
 )
 (
     input wire clk, //clock @ 100 MHz
@@ -11,6 +12,7 @@ module track_store_load#
 
     input wire store_req,   // asserted when we are also going to assert rd
     input wire load_req,    // asserted when we are going to also assert wr
+    input wire mix_req, // asserted when we are going to also assert mrd
 
     input wire [31:0] initial_addr,
 
@@ -20,6 +22,9 @@ module track_store_load#
     output logic [WORD_WIDTH-1:0] dout, // at most 2 cycles after rd is asserted, we have a valid output here
     input wire rd, // asserted when we need a new value on dout
 
+    output logic [$clog2(CHANNELS)-1:0][WORD_WIDTH-1:0] mdout,    // at most 2 cycles after mrd is asserted, we have a valid output here
+    input wire mrd,
+    
     input wire [0:0] sd_dat_in,
     output logic [2:0] sd_dat_out,
     output logic sd_reset, 
@@ -62,7 +67,8 @@ module track_store_load#
     logic [31:0] sd_addr_load;
     logic [31:0] sd_addr_store;
 
-    assign sd_addr = (load_req) ? sd_addr_load : sd_addr_store;
+    assign sd_addr = (load_req) ? sd_addr_load : ((store_req) ? sd_addr_store : sd_addr_mix);
+    assign sd_rd = (load_req) ? sd_rd_load : sd_rd_mix;
 
     sd_controller sdControl(
         // common stuff
@@ -192,6 +198,8 @@ module track_store_load#
     logic [8:0] cnt_byte_available_posedge;
     logic rd_prev;
 
+    logic sd_rd_load;
+
     fifo#(
         .WIDTH(WORD_WIDTH),
         .DEPTH(4096)
@@ -203,7 +211,7 @@ module track_store_load#
         .rd((load_req == 1 && rd == 1 && rd_prev == 0) ? 1 : 0),
         .dout(dout),
 
-        .wr((sd_rd == 1 && byte_available == 1 && byte_available_prev == 0) ? 1 : 0),  // write on negative edge of byte available to ensure current_word is updated
+        .wr((load_req == 1 && sd_rd_load == 1 && byte_available == 1 && byte_available_prev == 0) ? 1 : 0),  // write on negative edge of byte available to ensure current_word is updated
         .din(sd_dout)
     );
 
@@ -216,12 +224,12 @@ module track_store_load#
     always_ff @(posedge clk) begin  // sd card -> fifo load
         if (rst) begin
             cnt_byte_available_posedge <= 0;
-            sd_rd <= 0;
+            sd_rd_load <= 0;
             write_next_fifo_load <= 3;
-        end else if (sd_rd == 1 && byte_available == 1 && byte_available_prev == 0) begin // byte available posedge
+        end else if (sd_rd_load == 1 && byte_available == 1 && byte_available_prev == 0) begin // byte available posedge
             if (cnt_byte_available_posedge == 511) begin
                 cnt_byte_available_posedge <= 0;
-                sd_rd <= 0;
+                sd_rd_load <= 0;
             end else begin
                 cnt_byte_available_posedge <= cnt_byte_available_posedge + 1;
             end
@@ -241,7 +249,7 @@ module track_store_load#
 //                end
         end else if (load_req == 1 && write_next_fifo_load > 0) begin
             if (sd_ready) begin
-                sd_rd <= 1;
+                sd_rd_load <= 1;
                 cnt_byte_available_posedge <= 0;
             end
         end
@@ -249,7 +257,7 @@ module track_store_load#
         if (!load_req) begin
             sd_addr_load <= initial_addr;
             write_next_fifo_load <= 3;
-        end else if (sd_rd == 1 && byte_available == 1 && byte_available_prev == 0 && cnt_byte_available_posedge == 511) begin
+        end else if (sd_rd_load == 1 && byte_available == 1 && byte_available_prev == 0 && cnt_byte_available_posedge == 511) begin
             sd_addr_load <= sd_addr_load+512;
         end
         
@@ -270,6 +278,88 @@ module track_store_load#
             load_byte_cnt <= load_byte_cnt + 1;  // add how many bytes we retrieved from fifo
         end
         rd_prev <= rd;
+    end
+
+
+    // ------------------------- (MIX LOAD) SD - FIFO - OUTPUT PIPELINE SECTION--------------------------------
+
+    logic [8:0] mix_byte_cnt;
+    logic [$clog2(CHANNELS)-1:0] current_channel;
+    logic [3:0] mix_write_next_fifo_load; // requests to load from sd to fifo new 512 byte sequence
+    
+
+    logic [8:0] mix_cnt_byte_available_posedge;
+    logic mrd_prev;
+    logic [31:0] sd_addr_mix_offset;
+    logic [31:0] sd_addr_mix = (current_channel << 25) + sd_addr_mix_offset;
+
+    generate
+        genvar i;
+
+        for (i = 0;i < CHANNELS;i = i+1) begin
+            fifo#(
+                .WIDTH(WORD_WIDTH),
+                .DEPTH(4096)
+            )
+            fifo_mix( // fifo that holds what we just loaded from sd
+                .clk(clk),
+                .rst(rst),
+
+                .rd((mix_req == 1 && mrd == 1 && mrd_prev == 0) ? 1 : 0),
+                .dout(mdout[i]),
+
+                .wr((current_channel == i && mix_req == 1 && sd_rd_mix == 1 && byte_available == 1 && byte_available_prev == 0) ? 1 : 0),  // write on negative edge of byte available to ensure current_word is updated
+                .din(sd_dout)
+            );
+        end
+    endgenerate
+
+    always_ff @(posedge clk) begin  // sd card -> fifo load
+        if (rst) begin
+            mix_cnt_byte_available_posedge <= 0;
+            sd_rd_mix <= 0;
+            mix_write_next_fifo_load <= 3;
+        end else if (sd_rd_mix == 1 && byte_available == 1 && byte_available_prev == 0) begin // byte available posedge
+            if (mix_cnt_byte_available_posedge == 511) begin
+                mix_cnt_byte_available_posedge <= 0;
+                sd_rd_mix <= 0;
+            end else begin
+                mix_cnt_byte_available_posedge <= mix_cnt_byte_available_posedge + 1;
+            end
+        end else if (mix_req == 1 && mix_write_next_fifo_load > 0) begin
+            if (sd_ready) begin
+                sd_rd_mix <= 1;
+                mix_cnt_byte_available_posedge <= 0;
+            end
+        end
+
+        if (!mix_req) begin
+            sd_addr_mix_offset <= 0;
+            mix_write_next_fifo_load <= 3;
+        end else if (sd_rd_mix == 1 && byte_available == 1 && byte_available_prev == 0 && mix_cnt_byte_available_posedge == 511) begin
+            if(current_channel == CHANNELS-1) begin
+                sd_addr_mix_offset <= sd_addr_mix_offset + 512;
+            end
+        end
+        
+        if (mix_req == 1 && mrd == 1 && mrd_prev == 0 && mix_byte_cnt == 511) begin
+            mix_write_next_fifo_load <= mix_write_next_fifo_load + 1;
+        end else if(mix_req == 1 && mix_write_next_fifo_load > 0 && sd_ready == 1) begin
+            if (current_channel == CHANNELS-1) begin
+                mix_write_next_fifo_load <= mix_write_next_fifo_load - 1;
+            end
+            current_channel <= current_channel+1;
+        end
+    end
+
+
+    always_ff @(posedge clk) begin // fifo load -> output
+        if (rst) begin
+            mix_byte_cnt <= 0;
+        end else if (mrd == 1 && mrd_prev == 0  && mix_req == 1) begin // new word request
+            mix_byte_cnt <= mix_byte_cnt + 1;  // add how many bytes we retrieved from fifo
+        end
+        mrd_prev <= mrd;
     end
 
 endmodule
