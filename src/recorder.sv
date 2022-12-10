@@ -4,7 +4,7 @@
 module track_store_load#
 (
     parameter WORD_WIDTH = 16,
-    parameter CHANNELS = 8,
+    parameter CHANNELS = 8
 )
 (
     input wire clk, //clock @ 100 MHz
@@ -215,12 +215,6 @@ module track_store_load#
         .din(sd_dout)
     );
 
-    // i need to check:
-    // cnt_byte_available_posedge
-    // read_pointer
-    // write_pointer
-    
-
     always_ff @(posedge clk) begin  // sd card -> fifo load
         if (rst) begin
             cnt_byte_available_posedge <= 0;
@@ -292,6 +286,7 @@ module track_store_load#
     logic mrd_prev;
     logic [31:0] sd_addr_mix_offset;
     logic [31:0] sd_addr_mix = (current_channel << 25) + sd_addr_mix_offset;
+    logic sd_rd_mix;
 
     generate
         genvar i;
