@@ -2,7 +2,8 @@
 `timescale 1ns / 1ps
 
 module top_level#(
-    parameter WORD_WIDTH = 8
+    parameter WORD_WIDTH = 8,
+    parameter CHANNELS = 8
 )
 (
     input wire clk, //clock @ 100 MHz
@@ -61,8 +62,8 @@ module top_level#(
     ) transmitter(
         .mclk(i2s_mclk[0]),
         .rst(sys_rst),
-        .tx_data_l((sw[1]) ? i2s_data_l : i2s_data_transmit), // these contain whatever was received 
-        .tx_data_r((sw[1]) ? i2s_data_r : i2s_data_transmit), // these contain whatever was received
+        .tx_data_l((sw[7]) ? i2s_data_l : i2s_data_transmit), // these contain whatever was received 
+        .tx_data_r((sw[7]) ? i2s_data_r : i2s_data_transmit), // these contain whatever was received
         .sd_tx(i2s_sdout),
         .sclk(i2s_sclk[0]),
         .ws(i2s_lrclk[0])
@@ -71,15 +72,19 @@ module top_level#(
     logic [WORD_WIDTH-1:0] store_load_din;
     logic store_load_wr;
     logic [WORD_WIDTH-1:0] store_load_dout;
+    logic [$clog2(CHANNELS):0][WORD_WIDTH-1:0] store_load_mdout;
     logic store_load_rd;
+    logic store_load_mrd;
 
     track_store_load#(
-        .WORD_WIDTH(WORD_WIDTH)
+        .WORD_WIDTH(WORD_WIDTH),
+        .CHANNELS(CHANNELS)
     ) store_load(
         .clk(clk_100),
         .rst(sys_rst),
         .store_req(sw[0]),
         .load_req(sw[15]),
+        .mix_req(sw[1]),
 
         .initial_addr(sw[14:10]<<25),
         
@@ -88,6 +93,9 @@ module top_level#(
 
         .dout(store_load_dout),
         .rd(store_load_rd),
+
+        .mdout(store_load_mdout),
+        .mrd(store_load_mrd),
 
         .sd_dat_in(sd_dat_in),
         .sd_dat_out(sd_dat_out),
@@ -129,7 +137,7 @@ module top_level#(
         .clka(clk_100),        // Clock in
         .addra(0),  // use port A for writes
         .ena(1'b1),    // Always on (?)
-        .dina({0,store_load_dout}),
+        .dina({0,store_load_mdout[sw[5:3]]}),
         .wea(1'b1),
 
         .clkb(clk_22), // clock out
@@ -141,8 +149,8 @@ module top_level#(
     assign store_load_din = clock_cross_bram_22_to_100_out[7:0];
     assign store_load_wr = clock_cross_bram_22_to_100_out[8];
     assign store_load_rd = clock_cross_bram_22_to_100_out[8];
+    assign store_load_mrd = clock_cross_bram_22_to_100_out[8];
     assign i2s_data_transmit = clock_cross_bram_100_to_22_out[7:0];
-
 endmodule
 
 `default_nettype wire
