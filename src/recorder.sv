@@ -4,7 +4,7 @@
 module track_store_load#
 (
     parameter WORD_WIDTH = 16,
-    parameter CHANNELS = 8
+    parameter CHANNELS = 1
 )
 (
     input wire clk, //clock @ 100 MHz
@@ -277,15 +277,14 @@ module track_store_load#
 
     // ------------------------- (MIX LOAD) SD - FIFO - OUTPUT PIPELINE SECTION--------------------------------
 
-    logic [8:0] mix_byte_cnt;
-    logic [$clog2(CHANNELS)-1:0] current_channel;
-    logic [3:0] mix_write_next_fifo_load; // requests to load from sd to fifo new 512 byte sequence
+    logic [8:0] mix_byte_cnt; // how many bytes have been loaded from fifo to output (resets every 512)
+    logic [$clog2(CHANNELS):0] current_channel;   // which channel are we currently retrieving data for from the sd
+    logic [3:0] mix_write_next_fifo_load; // how many requests to load from sd to fifo new 512 byte sequence are pending
     
-
-    logic [8:0] mix_cnt_byte_available_posedge;
+    logic [8:0] mix_cnt_byte_available_posedge; // how many bytes have been retrieved from current sector
     logic mrd_prev;
-    logic [31:0] sd_addr_mix_offset;
-    logic [31:0] sd_addr_mix = (current_channel << 25) + sd_addr_mix_offset;
+    logic [31:0] sd_addr_mix_offset;    // offset for sd addresses (increments of 512)
+    logic [31:0] sd_addr_mix;    // actual sd address of current track
     logic sd_rd_mix;
 
     generate
@@ -303,13 +302,13 @@ module track_store_load#
                 .rd((mix_req == 1 && mrd == 1 && mrd_prev == 0) ? 1 : 0),
                 .dout(mdout[i]),
 
-                .wr((current_channel == i && mix_req == 1 && sd_rd_mix == 1 && byte_available == 1 && byte_available_prev == 0) ? 1 : 0),  // write on negative edge of byte available to ensure current_word is updated
+                .wr((current_channel == i && mix_req == 1 && sd_rd_mix == 1 && byte_available == 1 && byte_available_prev == 0) ? 1 : 0),
                 .din(sd_dout)
             );
         end
     endgenerate
 
-    always_ff @(posedge clk) begin  // sd card -> fifo load
+    always_ff @(posedge clk) begin  // sd card -> fifo mix
         if (rst) begin
             mix_cnt_byte_available_posedge <= 0;
             sd_rd_mix <= 0;
@@ -331,9 +330,13 @@ module track_store_load#
         if (!mix_req) begin
             sd_addr_mix_offset <= 0;
             mix_write_next_fifo_load <= 3;
+            current_channel <= 0;
         end else if (sd_rd_mix == 1 && byte_available == 1 && byte_available_prev == 0 && mix_cnt_byte_available_posedge == 511) begin
             if(current_channel == CHANNELS-1) begin
                 sd_addr_mix_offset <= sd_addr_mix_offset + 512;
+                sd_addr_mix <= sd_addr_mix_offset+512;
+            end else begin
+                sd_addr_mix <= ((current_channel+1) << 25)+sd_addr_mix_offset;
             end
         end
         
@@ -342,8 +345,11 @@ module track_store_load#
         end else if(mix_req == 1 && mix_write_next_fifo_load > 0 && sd_ready == 1) begin
             if (current_channel == CHANNELS-1) begin
                 mix_write_next_fifo_load <= mix_write_next_fifo_load - 1;
+                current_channel <= 0;
             end
-            current_channel <= current_channel+1;
+            else begin 
+                current_channel <= current_channel+1;
+            end
         end
     end
 
