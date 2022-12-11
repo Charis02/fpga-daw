@@ -22,7 +22,7 @@ module track_store_load#
     output logic [WORD_WIDTH-1:0] dout, // at most 2 cycles after rd is asserted, we have a valid output here
     input wire rd, // asserted when we need a new value on dout
 
-    output logic [$clog2(CHANNELS)-1:0][WORD_WIDTH-1:0] mdout,    // at most 2 cycles after mrd is asserted, we have a valid output here
+    output logic [$clog2(CHANNELS):0][WORD_WIDTH-1:0] mdout,    // at most 2 cycles after mrd is asserted, we have a valid output here
     input wire mrd,
     
     input wire [0:0] sd_dat_in,
@@ -199,6 +199,7 @@ module track_store_load#
     logic rd_prev;
 
     logic sd_rd_load;
+    initial sd_rd_load = 0;
 
     fifo#(
         .WIDTH(WORD_WIDTH),
@@ -286,6 +287,7 @@ module track_store_load#
     logic [31:0] sd_addr_mix_offset;    // offset for sd addresses (increments of 512)
     logic [31:0] sd_addr_mix;    // actual sd address of current track
     logic sd_rd_mix;
+    initial sd_rd_mix = 0;
 
     generate
         genvar i;
@@ -293,7 +295,7 @@ module track_store_load#
         for (i = 0;i < CHANNELS;i = i+1) begin
             fifo#(
                 .WIDTH(WORD_WIDTH),
-                .DEPTH(4096)
+                .DEPTH(8192)
             )
             fifo_mix( // fifo that holds what we just loaded from sd
                 .clk(clk),
@@ -329,27 +331,20 @@ module track_store_load#
 
         if (!mix_req) begin
             sd_addr_mix_offset <= 0;
-            mix_write_next_fifo_load <= 3;
+            mix_write_next_fifo_load <= 7;
             current_channel <= 0;
         end else if (sd_rd_mix == 1 && byte_available == 1 && byte_available_prev == 0 && mix_cnt_byte_available_posedge == 511) begin
             if(current_channel == CHANNELS-1) begin
                 sd_addr_mix_offset <= sd_addr_mix_offset + 512;
                 sd_addr_mix <= sd_addr_mix_offset+512;
+                current_channel <= 0;
+                mix_write_next_fifo_load <= mix_write_next_fifo_load - 1;
             end else begin
                 sd_addr_mix <= ((current_channel+1) << 25)+sd_addr_mix_offset;
-            end
-        end
-        
-        if (mix_req == 1 && mrd == 1 && mrd_prev == 0 && mix_byte_cnt == 511) begin
-            mix_write_next_fifo_load <= mix_write_next_fifo_load + 1;
-        end else if(mix_req == 1 && mix_write_next_fifo_load > 0 && sd_ready == 1) begin
-            if (current_channel == CHANNELS-1) begin
-                mix_write_next_fifo_load <= mix_write_next_fifo_load - 1;
-                current_channel <= 0;
-            end
-            else begin 
                 current_channel <= current_channel+1;
             end
+        end else if (mix_req == 1 && mrd == 1 && mrd_prev == 0 && mix_byte_cnt == 511) begin
+            mix_write_next_fifo_load <= mix_write_next_fifo_load + 1;
         end
     end
 
