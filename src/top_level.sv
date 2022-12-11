@@ -72,7 +72,7 @@ module top_level#(
     logic [WORD_WIDTH-1:0] store_load_din;
     logic store_load_wr;
     logic [WORD_WIDTH-1:0] store_load_dout;
-    logic [$clog2(CHANNELS)-1:0][WORD_WIDTH-1:0] store_load_mdout;
+    logic [$clog2(CHANNELS):0][WORD_WIDTH-1:0] store_load_mdout;
     logic store_load_rd;
     logic store_load_mrd;
 
@@ -151,7 +151,6 @@ module top_level#(
     assign store_load_rd = clock_cross_bram_22_to_100_out[8];
     assign store_load_mrd = clock_cross_bram_22_to_100_out[8];
     assign i2s_data_transmit = clock_cross_bram_100_to_22_out[7:0];
-
 endmodule
 
 `default_nettype wire
