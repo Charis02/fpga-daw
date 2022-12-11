@@ -62,8 +62,8 @@ module top_level#(
     ) transmitter(
         .mclk(i2s_mclk[0]),
         .rst(sys_rst),
-        .tx_data_l((sw[1]) ? i2s_data_l : i2s_data_transmit), // these contain whatever was received 
-        .tx_data_r((sw[1]) ? i2s_data_r : i2s_data_transmit), // these contain whatever was received
+        .tx_data_l((sw[7]) ? i2s_data_l : i2s_data_transmit), // these contain whatever was received 
+        .tx_data_r((sw[7]) ? i2s_data_r : i2s_data_transmit), // these contain whatever was received
         .sd_tx(i2s_sdout),
         .sclk(i2s_sclk[0]),
         .ws(i2s_lrclk[0])
@@ -77,7 +77,8 @@ module top_level#(
     logic store_load_mrd;
 
     track_store_load#(
-        .WORD_WIDTH(WORD_WIDTH)
+        .WORD_WIDTH(WORD_WIDTH),
+        .CHANNELS(CHANNELS)
     ) store_load(
         .clk(clk_100),
         .rst(sys_rst),
@@ -136,7 +137,7 @@ module top_level#(
         .clka(clk_100),        // Clock in
         .addra(0),  // use port A for writes
         .ena(1'b1),    // Always on (?)
-        .dina({0,store_load_dout}),
+        .dina({0,store_load_mdout[sw[5:3]]}),
         .wea(1'b1),
 
         .clkb(clk_22), // clock out
