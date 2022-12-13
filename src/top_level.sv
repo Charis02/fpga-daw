@@ -62,8 +62,8 @@ module top_level#(
     ) transmitter(
         .mclk(i2s_mclk[0]),
         .rst(sys_rst),
-        .tx_data_l((sw[7]) ? i2s_data_l : i2s_data_transmit), // these contain whatever was received 
-        .tx_data_r((sw[7]) ? i2s_data_r : i2s_data_transmit), // these contain whatever was received
+        .tx_data_l((sw[2]) ? i2s_data_l : i2s_data_transmit), // these contain whatever was received 
+        .tx_data_r((sw[2]) ? i2s_data_r : i2s_data_transmit), // these contain whatever was received
         .sd_tx(i2s_sdout),
         .sclk(i2s_sclk[0]),
         .ws(i2s_lrclk[0])
@@ -103,6 +103,34 @@ module top_level#(
         .sd_sck(sd_sck),
         .sd_cmd(sd_cmd)
     );
+
+    logic [WORD_WIDTH-1:0] mixer_dout;
+    logic [$clog2(CHANNELS):0][3:0] volumes;
+    logic [$clog2(CHANNELS):0] mutes;
+    always_comb begin
+        for(integer i =0; i<CHANNELS; i= i+1)begin
+            volumes[i] = (sw[9] << 3) + (sw[8] << 2) + (sw[7] << 1) + 1;
+        end
+        mutes[0] = sw[3];
+        mutes[1] = sw[4];
+        mutes[2] = sw[5];
+        mutes[3] = sw[6];
+    end
+    
+    mixer#(
+        .WIDTH(WORD_WIDTH),
+        .CHANNELS(CHANNELS)
+    ) mix(
+        .clk_in(clk_100),
+        .rst_in(sys_rst),
+
+        .data_dry(store_load_mdout),
+        .volume(volumes),
+        .mute(mutes),
+
+        .data_wet(mixer_dout)
+    );
+    
     
     logic [15:0] clock_cross_bram_100_to_22_out;
     logic [15:0] clock_cross_bram_22_to_100_out;
@@ -137,7 +165,7 @@ module top_level#(
         .clka(clk_100),        // Clock in
         .addra(0),  // use port A for writes
         .ena(1'b1),    // Always on (?)
-        .dina({0,store_load_mdout[sw[5:3]]}),
+        .dina({0,mixer_dout}),
         .wea(1'b1),
 
         .clkb(clk_22), // clock out
