@@ -1,7 +1,7 @@
 `default_nettype none
 `timescale 1ns / 1ps
 
-module delay#(parameter WIDTH = 16)(
+module delay#(parameter WIDTH = 16, SAMPLES_SAVED = 30000)(
     input wire clk_in, //clock @ 11.29 mhz
     input wire rst_in, 
     input wire delay_enable,
@@ -12,7 +12,6 @@ module delay#(parameter WIDTH = 16)(
     output logic signed [WIDTH-1:0] data_wet    // left output
 );
 
-    localparam SAMPLES_SAVED = 30000;
 
     logic [$clog2(SAMPLES_SAVED)-1:0] addr_pointer_read = 0;
     logic [$clog2(SAMPLES_SAVED)-1:0] addr_pointer_write = 0;
