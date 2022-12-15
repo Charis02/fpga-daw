@@ -7,7 +7,7 @@ module top_level#(
 )
 (
     input wire clk, //clock @ 100 MHz
-    input wire btnc, //btnc (used for reset)
+    input wire btnc, btnl, btnr, btnu, btnd, //btnc (used for reset)
 
     output logic [1:0] i2s_mclk,    // main clocks of i2s module
     output logic [1:0] i2s_lrclk,   // left right clocks of i2s module
@@ -20,6 +20,8 @@ module top_level#(
     output logic sd_reset, 
     output logic sd_sck, 
     output logic sd_cmd,
+    output logic [3:0] vga_r, vga_g, vga_b,
+    output logic vga_hs, vga_vs,
     input wire sd_cd,
 
     input wire [15:0] sw
@@ -29,13 +31,16 @@ module top_level#(
     // i2s section
 
     logic clk_22;
+    logic clk_65mhz;
     logic clk_100;
 
-    clk_wiz_22 clk_wiz( // this generates a clock of 22.579 MHz
+    clk_wiz0 clk_wiz( // this generates a clock of 22.579 MHz
         .clk_in1(clk),
         .clk_out1(clk_22),
-        .clk_out2(clk_100)
+        .clk_out2(clk_100),
+        .clk_out3(clk_65mhz)
     );
+
 
     assign i2s_mclk[0] = clk_22;    // main clock for i2s transmit
     assign i2s_mclk[1] = clk_22;    // main clock for i2s receive
@@ -55,10 +60,10 @@ module top_level#(
         .ws(i2s_lrclk[1])
     );
 
-    logic [WORD_WIDTH-1:0] i2s_data_transmit;
+    logic [15:0] i2s_data_transmit;
 
     i2s_transmitter#(
-        .WIDTH(WORD_WIDTH)
+        .WIDTH(16)
     ) transmitter(
         .mclk(i2s_mclk[0]),
         .rst(sys_rst),
@@ -70,7 +75,8 @@ module top_level#(
     );
 
     logic [WORD_WIDTH-1:0] store_load_din;
-    logic store_load_wr;
+    logic store_load_wr, record = 0;
+    logic [4:0] record_channel;
     logic [WORD_WIDTH-1:0] store_load_dout;
     logic [$clog2(CHANNELS):0][WORD_WIDTH-1:0] store_load_mdout;
     logic store_load_rd;
@@ -82,11 +88,11 @@ module top_level#(
     ) store_load(
         .clk(clk_100),
         .rst(sys_rst),
-        .store_req(sw[0]),
+        .store_req(record),
         .load_req(sw[15]),
         .mix_req(sw[1]),
 
-        .initial_addr(sw[14:10]<<25),
+        .initial_addr(record_channel<<25),
         
         .din(store_load_din),
         .wr(store_load_wr),
@@ -104,18 +110,143 @@ module top_level#(
         .sd_cmd(sd_cmd)
     );
 
-    logic [WORD_WIDTH-1:0] mixer_dout;
-    logic [$clog2(CHANNELS):0][3:0] volumes;
-    logic [$clog2(CHANNELS):0] mutes;
-    always_comb begin
-        for(integer i =0; i<CHANNELS; i= i+1)begin
-            volumes[i] = (sw[9] << 3) + (sw[8] << 2) + (sw[7] << 1) + 1;
-        end
-        mutes[0] = sw[3];
-        mutes[1] = sw[4];
-        mutes[2] = sw[5];
-        mutes[3] = sw[6];
-    end
+
+    
+
+
+    logic up, down, right, left, enter = 0;
+    logic up_clean, down_clean, right_clean, left_clean, enter_clean;
+    debouncer db2(
+        .rst_in(sys_rst),
+        .clk_in(clk_65mhz),
+        .dirty_in(btnu),
+        .clean_out(up));
+
+    edge_detector ed2(
+        .rst_in(sys_rst),
+        .clk_in(clk_65mhz),
+        .dirty_in(up),
+        .clean_out(up_clean)
+    );
+
+    debouncer db3(
+        .rst_in(sys_rst),
+        .clk_in(clk_65mhz),
+        .dirty_in(btnd),
+        .clean_out(down));
+
+    edge_detector ed3(
+        .rst_in(sys_rst),
+        .clk_in(clk_65mhz),
+        .dirty_in(down),
+        .clean_out(down_clean)
+    );
+
+    debouncer db0(
+        .rst_in(sys_rst),
+        .clk_in(clk_65mhz),
+        .dirty_in(btnl),
+        .clean_out(left));
+
+    edge_detector ed0(
+        .rst_in(sys_rst),
+        .clk_in(clk_65mhz),
+        .dirty_in(left),
+        .clean_out(left_clean)
+    );
+
+    enter_btn ed1(
+        .rst_in(sys_rst),
+        .clk_in(clk_65mhz),
+        .dirty_in(right),
+        .clean_out(right_clean)
+    );
+
+
+    edge_detector ed5(
+        .rst_in(sys_rst),
+        .clk_in(clk_65mhz),
+        .dirty_in(sw[4]),
+        .clean_out(enter_clean)
+    );
+
+    /* Video Pipeline */   
+
+    logic [10:0] hcount;    // pixel on current line
+    logic [9:0] vcount;     // line number
+    logic hsync, vsync, blank; //control signals for vga
+
+    vga vga_gen(
+        .pixel_clk_in(clk_65mhz),
+        .hcount_out(hcount),
+        .vcount_out(vcount),
+        .hsync_out(hsync),
+        .vsync_out(vsync),
+        .blank_out(blank));
+
+    logic [5:0] gui_cursor = 0;
+    logic [11:0] color;
+    logic [4:0] effect_enable = 0;
+    logic [4:0] delay_enable = 0;
+    logic [4:0] echo_enable = 0;
+    logic [4:0] chorus_enable = 0;
+    logic [4:0] distortion_enable = 0;
+    logic [4:0] limiter_enable = 0;
+    logic solo_enable = 0;
+    logic [4:0] solo = 0;    
+    logic [4:0] mute = 0;
+    logic [4:0][3:0] volume;
+
+    graphical_user_interface guii(
+        .pixel_clk_in(clk_65mhz),
+        .rst_in(sys_rst),
+        .enter_in(enter_clean),
+        .up_in(up_clean),
+        .down_in(down_clean),
+        .left_in(left_clean),
+        .right_in(right_clean),
+        .record(record),
+        .record_channel(record_channel),
+        .gui_cursor(gui_cursor),
+        .effect_enable(effect_enable),
+        .delay_enable(delay_enable),
+        .echo_enable(echo_enable),
+        .chorus_enable(chorus_enable),
+        .distortion_enable(distortion_enable),
+        .limiter_enable(limiter_enable),
+        .solo_enable(solo_enable),
+        .solo(solo),
+        .mute(mute),
+        .volume(volume),
+        .hcount_in(hcount),
+        .vcount_in(vcount),
+        .pixel_out(color));
+
+
+    assign vga_r = ~blank ? color[11:8]: 0;
+    assign vga_g = ~blank ? color[7:4] : 0;
+    assign vga_b = ~blank ? color[3:0] : 0;
+
+    assign vga_hs = ~hsync;
+    assign vga_vs = ~vsync;
+    logic [$clog2(CHANNELS):0][WORD_WIDTH-1:0] effects_dout;
+    logic [15:0] mixer_dout;
+
+    effects#(
+        .WIDTH(WORD_WIDTH),
+        .CHANNELS(CHANNELS)
+    ) effect(
+        .clk_in(clk_65mhz),
+        .rst_in(sys_rst),
+        .effect_enable(effect_enable),
+        .delay_enable(delay_enable),
+        .echo_enable(echo_enable),
+        .distortion_enable(distortion_enable),
+        .limiter_enable(limiter_enable),
+        .data_dry(store_load_mdout),
+        .data_wet(effects_dout)
+    );
+
     
     mixer#(
         .WIDTH(WORD_WIDTH),
@@ -124,14 +255,16 @@ module top_level#(
         .clk_in(clk_100),
         .rst_in(sys_rst),
 
-        .data_dry(store_load_mdout),
-        .volume(volumes),
-        .mute(mutes),
+        .data_dry(effects_dout),
+        .volume(volume),
+        .mute(mute),
+        .solo_enable(solo_enable),
+        .solo(solo),
 
         .data_wet(mixer_dout)
     );
     
-    
+
     logic [15:0] clock_cross_bram_100_to_22_out;
     logic [15:0] clock_cross_bram_22_to_100_out;
     logic i2s_lrclk_prev;
@@ -165,7 +298,7 @@ module top_level#(
         .clka(clk_100),        // Clock in
         .addra(0),  // use port A for writes
         .ena(1'b1),    // Always on (?)
-        .dina({0,mixer_dout}),
+        .dina(mixer_dout),
         .wea(1'b1),
 
         .clkb(clk_22), // clock out
@@ -178,7 +311,7 @@ module top_level#(
     assign store_load_wr = clock_cross_bram_22_to_100_out[8];
     assign store_load_rd = clock_cross_bram_22_to_100_out[8];
     assign store_load_mrd = clock_cross_bram_22_to_100_out[8];
-    assign i2s_data_transmit = clock_cross_bram_100_to_22_out[7:0];
+    assign i2s_data_transmit = clock_cross_bram_100_to_22_out[15:0];
 endmodule
 
 `default_nettype wire

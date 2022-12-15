@@ -284,7 +284,7 @@ module track_store_load#
     
     logic [8:0] mix_cnt_byte_available_posedge; // how many bytes have been retrieved from current sector
     logic mrd_prev;
-    logic [31:0] sd_addr_mix_offset;    // offset for sd addresses (increments of 512)
+    logic [19:0] sd_addr_mix_offset;    // offset for sd addresses (increments of 512)
     logic [31:0] sd_addr_mix;    // actual sd address of current track
     logic sd_rd_mix;
     initial sd_rd_mix = 0;
