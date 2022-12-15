@@ -3,7 +3,7 @@
 
 module top_level#(
     parameter WORD_WIDTH = 8,
-    parameter CHANNELS = 8
+    parameter CHANNELS = 4
 )
 (
     input wire clk, //clock @ 100 MHz
@@ -61,21 +61,26 @@ module top_level#(
     );
 
     logic [15:0] i2s_data_transmit;
+    logic [15:0] out_l;
+    logic [15:0] out_r;
+
+    assign out_l = i2s_data_l <<< 7;
+    assign out_r = i2s_data_r <<< 7;
 
     i2s_transmitter#(
         .WIDTH(16)
     ) transmitter(
         .mclk(i2s_mclk[0]),
         .rst(sys_rst),
-        .tx_data_l((sw[2]) ? i2s_data_l : i2s_data_transmit), // these contain whatever was received 
-        .tx_data_r((sw[2]) ? i2s_data_r : i2s_data_transmit), // these contain whatever was received
+        .tx_data_l((sw[2]) ? out_l : i2s_data_transmit), // these contain whatever was received 
+        .tx_data_r((sw[2]) ? out_r : i2s_data_transmit), // these contain whatever was received
         .sd_tx(i2s_sdout),
         .sclk(i2s_sclk[0]),
         .ws(i2s_lrclk[0])
     );
 
     logic [WORD_WIDTH-1:0] store_load_din;
-    logic store_load_wr, record = 0;
+    logic store_load_wr, record;
     logic [4:0] record_channel;
     logic [WORD_WIDTH-1:0] store_load_dout;
     logic [$clog2(CHANNELS):0][WORD_WIDTH-1:0] store_load_mdout;
@@ -86,7 +91,7 @@ module top_level#(
         .WORD_WIDTH(WORD_WIDTH),
         .CHANNELS(CHANNELS)
     ) store_load(
-        .clk(clk_100),
+        .clk(clk_65mhz),
         .rst(sys_rst),
         .store_req(record),
         .load_req(sw[15]),
@@ -114,7 +119,7 @@ module top_level#(
     
 
 
-    logic up, down, right, left, enter = 0;
+    logic up, down, right, left;
     logic up_clean, down_clean, right_clean, left_clean, enter_clean;
     debouncer db2(
         .rst_in(sys_rst),
@@ -155,7 +160,13 @@ module top_level#(
         .clean_out(left_clean)
     );
 
-    enter_btn ed1(
+    debouncer db1(
+        .rst_in(sys_rst),
+        .clk_in(clk_65mhz),
+        .dirty_in(btnr),
+        .clean_out(right));
+
+    edge_detector ed1(
         .rst_in(sys_rst),
         .clk_in(clk_65mhz),
         .dirty_in(right),
@@ -163,7 +174,7 @@ module top_level#(
     );
 
 
-    edge_detector ed5(
+    enter_btn entr_btn(
         .rst_in(sys_rst),
         .clk_in(clk_65mhz),
         .dirty_in(sw[4]),
@@ -184,19 +195,20 @@ module top_level#(
         .vsync_out(vsync),
         .blank_out(blank));
 
-    logic [5:0] gui_cursor = 0;
+    logic [5:0] gui_cursor;
     logic [11:0] color;
-    logic [4:0] effect_enable = 0;
-    logic [4:0] delay_enable = 0;
-    logic [4:0] echo_enable = 0;
-    logic [4:0] chorus_enable = 0;
-    logic [4:0] distortion_enable = 0;
-    logic [4:0] limiter_enable = 0;
-    logic solo_enable = 0;
-    logic [4:0] solo = 0;    
-    logic [4:0] mute = 0;
+    logic [4:0] effect_enable;
+    logic [4:0] delay_enable;
+    logic [4:0] echo_enable;
+    logic [4:0] chorus_enable;
+    logic [4:0] distortion_enable;
+    logic [4:0] limiter_enable;
+    logic solo_enable;
+    logic [4:0] solo;    
+    logic [4:0] mute;
     logic [4:0][3:0] volume;
 
+    
     graphical_user_interface guii(
         .pixel_clk_in(clk_65mhz),
         .rst_in(sys_rst),
@@ -222,6 +234,8 @@ module top_level#(
         .vcount_in(vcount),
         .pixel_out(color));
 
+        
+
 
     assign vga_r = ~blank ? color[11:8]: 0;
     assign vga_g = ~blank ? color[7:4] : 0;
@@ -229,9 +243,59 @@ module top_level#(
 
     assign vga_hs = ~hsync;
     assign vga_vs = ~vsync;
-    logic [$clog2(CHANNELS):0][WORD_WIDTH-1:0] effects_dout;
+    logic [$clog2(CHANNELS):0][WORD_WIDTH-1:0] effects_in;
+    logic signed [$clog2(CHANNELS):0][WORD_WIDTH-1:0] delay_dout;
+    logic signed [$clog2(CHANNELS):0][WORD_WIDTH-1:0] echo_dout;
+    logic signed [$clog2(CHANNELS):0][WORD_WIDTH-1:0] effects_dout;
     logic [15:0] mixer_dout;
 
+    generate
+        genvar i;
+        for(i=0; i<CHANNELS; i=i+1)begin
+            delay#(
+                .WIDTH(WORD_WIDTH)
+            ) delay(
+                .clk_in(clk_65mhz),
+                .rst_in(sys_rst),
+                .delay_enable(delay_enable[i]),
+                .echo_enable(0),
+                .data_dry(store_load_mdout[i]),
+                .data_wet(delay_dout[i])
+            );
+        end
+    endgenerate
+
+    generate
+        genvar j;
+        for(j=0; j<CHANNELS; j=j+1)begin
+            delay#(
+                .WIDTH(WORD_WIDTH)
+            ) echo(
+                .clk_in(clk_65mhz),
+                .rst_in(sys_rst),
+                .delay_enable(0),
+                .echo_enable(echo_enable[j]),
+                .data_dry(delay_dout[j]),
+                .data_wet(echo_dout[j])
+            );
+        end
+    endgenerate
+
+    generate
+        genvar k;
+        for(k=0; k<CHANNELS; k=k+1)begin
+            distortion#(
+                .WIDTH(WORD_WIDTH)
+            ) distortion(
+                .clk_in(clk_65mhz),
+                .rst_in(sys_rst),
+                .distortion_enable(distortion_enable[k]),
+                .data_dry(echo_dout[k]),
+                .data_wet(effects_dout[k])
+            );
+        end
+    endgenerate
+    /*
     effects#(
         .WIDTH(WORD_WIDTH),
         .CHANNELS(CHANNELS)
@@ -246,17 +310,18 @@ module top_level#(
         .data_dry(store_load_mdout),
         .data_wet(effects_dout)
     );
+    */
 
     
     mixer#(
         .WIDTH(WORD_WIDTH),
         .CHANNELS(CHANNELS)
     ) mix(
-        .clk_in(clk_100),
+        .clk_in(clk_65mhz),
         .rst_in(sys_rst),
 
         .data_dry(effects_dout),
-        .volume(volume),
+        //.volume(volume),
         .mute(mute),
         .solo_enable(solo_enable),
         .solo(solo),
@@ -265,8 +330,10 @@ module top_level#(
     );
     
 
-    logic [15:0] clock_cross_bram_100_to_22_out;
+    logic [15:0] clock_cross_bram_65_to_22_out;
     logic [15:0] clock_cross_bram_22_to_100_out;
+    logic [15:0] clock_cross_bram_100_to_65_out1;
+    logic [15:0] clock_cross_bram_100_to_65_out2;
     logic i2s_lrclk_prev;
     logic i2s_clock_change;
     logic [7:0] i2s_data_to_store;
@@ -276,6 +343,36 @@ module top_level#(
         i2s_clock_change <= (i2s_lrclk[1] != i2s_lrclk_prev) ? 1 : 0;
         i2s_data_to_store <= (i2s_lrclk[1] == 1) ? i2s_data_l : i2s_data_r;
     end
+
+    blk_mem_gen_0 
+    clock_cross_bram_100_to_65_1
+    (
+        .clka(clk_100),        // Clock in
+        .addra(0),  // use port A for writes
+        .ena(1'b1),    // Always on (?)
+        .dina({store_load_mdout[1], store_load_mdout[0]}),
+        .wea(1'b1),
+
+        .clkb(clk_65mhz), // clock out
+        .addrb(0), // use port B for reads
+        .enb(1'b1), // always on (?)
+        .doutb(clock_cross_bram_100_to_65_out1)
+    );
+
+    blk_mem_gen_0 
+    clock_cross_bram_100_to_65_2
+    (
+        .clka(clk_100),        // Clock in
+        .addra(0),  // use port A for writes
+        .ena(1'b1),    // Always on (?)
+        .dina({store_load_mdout[3], store_load_mdout[2]}),
+        .wea(1'b1),
+
+        .clkb(clk_65mhz), // clock out
+        .addrb(0), // use port B for reads
+        .enb(1'b1), // always on (?)
+        .doutb(clock_cross_bram_100_to_65_out2)
+    );
 
     blk_mem_gen_0 
     clock_cross_bram_22_to_100
@@ -293,9 +390,9 @@ module top_level#(
     );
     
     blk_mem_gen_0 
-    clock_cross_bram_100_to_22
+    clock_cross_bram_65_to_22
     (
-        .clka(clk_100),        // Clock in
+        .clka(clk_65mhz),        // Clock in
         .addra(0),  // use port A for writes
         .ena(1'b1),    // Always on (?)
         .dina(mixer_dout),
@@ -304,14 +401,18 @@ module top_level#(
         .clkb(clk_22), // clock out
         .addrb(0), // use port B for reads
         .enb(1'b1), // always on (?)
-        .doutb(clock_cross_bram_100_to_22_out)
+        .doutb(clock_cross_bram_65_to_22_out)
     );
     
+    assign effects_in[0] = clock_cross_bram_100_to_65_out1[7:0];
+    assign effects_in[1] = clock_cross_bram_100_to_65_out1[15:8];
+    assign effects_in[2] = clock_cross_bram_100_to_65_out2[7:0];
+    assign effects_in[3] = clock_cross_bram_100_to_65_out2[15:8];
     assign store_load_din = clock_cross_bram_22_to_100_out[7:0];
     assign store_load_wr = clock_cross_bram_22_to_100_out[8];
     assign store_load_rd = clock_cross_bram_22_to_100_out[8];
     assign store_load_mrd = clock_cross_bram_22_to_100_out[8];
-    assign i2s_data_transmit = clock_cross_bram_100_to_22_out[15:0];
+    assign i2s_data_transmit = clock_cross_bram_65_to_22_out[15:0];
 endmodule
 
 `default_nettype wire

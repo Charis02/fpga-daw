@@ -10,7 +10,6 @@ module mixer#(parameter WIDTH = 16, CHANNELS = 4)(
 
     input wire signed [$clog2(CHANNELS):0][WIDTH-1:0] data_dry,    // clean input
 
-    input wire [$clog2(CHANNELS):0][3:0] volume,
     input wire [$clog2(CHANNELS):0] mute, 
 
     output logic signed [15:0] data_wet    // output
@@ -52,7 +51,7 @@ module mixer#(parameter WIDTH = 16, CHANNELS = 4)(
             else if(solo_enable && solo == 2) data_wet <= data_dry[2] <<< 7;
             else if(solo_enable && solo == 3) data_wet <= data_dry[3] <<< 7;
     
-            else data_wet <= $signed(data_dry_to_sum[0] + data_dry_to_sum[1] + data_dry_to_sum[2] + data_dry_to_sum[3]) <<< 7;
+            else data_wet <= $signed(data_dry_to_sum[0] + data_dry_to_sum[1] + data_dry_to_sum[2] + data_dry_to_sum[3]) <<< 6;
         end
     end
 
